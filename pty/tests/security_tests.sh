@@ -56,7 +56,7 @@ const ws = new WebSocket('ws://127.0.0.1:3000/pty?ticket=$TICKET');
 let out = '';
 ws.on('open', () => ws.send('echo PTY_OK; echo x > /home/visitor/f; whoami; command -v sh || echo NO_SH; command -v python || echo NO_PYTHON; command -v curl || echo NO_CURL; /usr/bin/python --version 2>&1 || echo NO_ABS_PYTHON; /usr/bin/node -v 2>&1 || echo NO_ABS_NODE; command -p python --version 2>&1 || echo NO_CMDP_PYTHON; command -p sh -c echo CMDPSH 2>&1 || echo NO_CMDP_SH; help; about; show all; projects; projects show ${SHOW_ID}; resume 2>&1 || echo NO_RESUME; clear; exit\r'));
 ws.on('message', d => { out += d.toString(); });
-ws.on('close', () => { console.log(out); process.exit(0); });
+ws.on('close', () => { require('fs').writeSync(1, out); process.exit(0); });
 setTimeout(() => process.exit(1), 12000);
 " 2>&1)
   echo "$RESULT" | grep -q "PTY_OK" && ok "bash PTY merespons" || bad "bash PTY merespons — got: $(echo "$RESULT" | head -3)"

@@ -9,6 +9,15 @@ use Illuminate\Http\JsonResponse;
 
 class ProfileController extends Controller
 {
+    public const ABOUT_LAYOUT_DEFAULTS = [
+        'logo_width' => 180,
+        'logo_height' => 200,
+        'gap' => 14,
+        'font_size' => 13,
+        'line_height' => 17,
+        'text_width' => 420,
+    ];
+
     public function show(): JsonResponse|ProfileResource
     {
         $profile = Profile::query()->first();

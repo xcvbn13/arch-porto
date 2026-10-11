@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
 import "@xterm/xterm/css/xterm.css";
 import { api, ApiError } from "../terminal/api";
-import { iipImage, wrapTextPx, splitWelcomeMarker, CLEAR_SCREEN_RE } from "../terminal/img";
+import { iipImage, wrapTextPx, splitWelcomeMarker, CLEAR_SCREEN_RE, ABOUT_START, ABOUT_END } from "../terminal/img";
 import {
   buildTheme,
   DEFAULT_STYLE,
@@ -237,10 +237,148 @@ export default function Terminal() {
       }
     };
 
+    /**
+     * Canvas `about`: foto profil di KIRI + teks tentang di KANAN, memakai
+     * layout yang sama dengan Fetch Info (logo_width/height, gap, font_size,
+     * line_height, text_width) dan warna terminal style.
+     */
+    const renderAbout = async () => {
+      try {
+        const [profile, style] = await Promise.all([
+          api.get<{
+            name: string;
+            role: string;
+            tagline: string | null;
+            bio: string;
+            avatar_url: string | null;
+            about_layout?: {
+              logo_width: number;
+              logo_height: number;
+              gap: number;
+              font_size: number;
+              line_height: number;
+              text_width: number;
+            };
+          }>("/profile"),
+          api.get<TerminalStyle>("/terminal-style").catch(() => DEFAULT_STYLE),
+        ]);
+        const c = bannerColors(style);
+        const layout = {
+          logo_width: 180,
+          logo_height: 200,
+          gap: 14,
+          font_size: 13,
+          line_height: 17,
+          text_width: 420,
+          ...(profile.about_layout ?? {}),
+        };
+
+        if (!profile.avatar_url) {
+          // Fallback teks bila foto tidak dikonfigurasi
+          term.write(
+            [
+              rgbFg(hexToRgb(c.accent), "\x1b[1m" + profile.name + "\x1b[0m"),
+              rgbFg(hexToRgb(c.fg), profile.role),
+              profile.tagline ? rgbFg(hexToRgb(c.dim), profile.tagline) : "",
+              "",
+              profile.bio,
+            ]
+              .filter((l) => l !== "")
+              .join("\r\n") + "\r\n",
+          );
+          return;
+        }
+
+        const res = await fetch(profile.avatar_url, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error("avatar fetch failed");
+        const blob = await res.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("read failed"));
+          reader.readAsDataURL(blob);
+        });
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error("decode failed"));
+          el.src = dataUrl;
+        });
+
+        const font = `${layout.font_size}px ${fontStack(style.font_family)}`;
+        const pad = layout.gap;
+        const lineH = layout.line_height;
+        const logoScale = Math.min(
+          1,
+          layout.logo_width / img.naturalWidth,
+          layout.logo_height / img.naturalHeight,
+        );
+        const logoW = Math.max(24, Math.round(img.naturalWidth * logoScale));
+        const logoH = Math.max(24, Math.round(img.naturalHeight * logoScale));
+
+        const lines = [profile.name, profile.role, profile.tagline ?? "", ""];
+        for (const l of profile.bio.split("\n")) lines.push(l);
+
+        const measure = document.createElement("canvas").getContext("2d");
+        if (!measure) throw new Error("canvas unavailable");
+        measure.font = font;
+        const longest = Math.max(80, ...lines.map((l) => measure.measureText(l).width));
+        const textW = Math.min(layout.text_width, Math.ceil(longest) + 4);
+        const wrapped = lines.flatMap((l) => wrapTextPx(measure, l, textW));
+
+        const W = Math.ceil(logoW + pad + textW + pad);
+        const H = Math.max(logoH, wrapped.length * lineH + 10);
+        const approxTermW = term.cols * 8.4;
+        const outScale = Math.min(1, (approxTermW * 0.92) / W);
+        const outW = Math.max(64, Math.round(W * outScale));
+        const outH = Math.max(24, Math.round(H * outScale));
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(outW * dpr);
+        canvas.height = Math.round(outH * dpr);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("canvas unavailable");
+        ctx.scale(dpr * outScale, dpr * outScale);
+        ctx.fillStyle = c.bg;
+        ctx.fillRect(0, 0, W, H);
+        const logoY = Math.round((H - logoH) / 2);
+        ctx.save();
+        ctx.shadowColor = c.accent + "55";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.roundRect(0, logoY, logoW, logoH, 8);
+        ctx.clip();
+        ctx.drawImage(img, 0, logoY, logoW, logoH);
+        ctx.restore();
+        ctx.textBaseline = "top";
+        for (let i = 0; i < wrapped.length; i++) {
+          const y = 5 + i * lineH;
+          if (i === 0) {
+            ctx.font = `bold ${font}`;
+            ctx.fillStyle = c.accent;
+          } else if (i === 1) {
+            ctx.font = font;
+            ctx.fillStyle = c.fg;
+          } else if (i === 2) {
+            ctx.font = font;
+            ctx.fillStyle = c.dim;
+          } else {
+            ctx.font = font;
+            ctx.fillStyle = c.fg;
+          }
+          if (wrapped[i]) ctx.fillText(wrapped[i], logoW + pad, y);
+        }
+        const png = canvas.toDataURL("image/png");
+        const b64 = png.slice(png.indexOf(",") + 1);
+        term.write(iipImage(b64, outW, atob(b64).length) + "\r\n");
+      } catch {
+        /* gagal → blok teks asli sudah dibuang, tulis prompt saja */
+      }
+    };
+
     const connect = async () => {
       if (disposed) return;
-      setStatus("connecting");
-      try {
+      setStatus("connecting");      try {
         const ticket = await mintOrReuse(api, sessionStorage);
         if (disposed) return;
         await renderWelcome(false);
@@ -255,10 +393,42 @@ export default function Terminal() {
         // Antrean serial: semua tulis ke terminal berurutan (banner async
         // tidak boleh mendahului prompt bash yang menyusul).
         let writeChain: Promise<void> = Promise.resolve();
+        let aboutBuffer: string[] | null = null;
         ws.onmessage = (ev) => {
           const chunk = String(ev.data);
           writeChain = writeChain.then(async () => {
             if (disposed) return;
+
+            // Blok `about`: buffer teks sampai penanda akhir, lalu ganti
+            // dengan satu canvas (foto kiri + teks kanan).
+            if (aboutBuffer !== null) {
+              const e = chunk.indexOf(ABOUT_END);
+              if (e === -1) {
+                aboutBuffer.push(chunk);
+                return;
+              }
+              aboutBuffer.push(chunk.slice(0, e));
+              const rest = chunk.slice(e + ABOUT_END.length);
+              aboutBuffer = null;
+              await renderAbout();
+              if (rest) term.write(rest);
+              return;
+            }
+            const sIdx = chunk.indexOf(ABOUT_START);
+            if (sIdx !== -1) {
+              if (sIdx > 0) term.write(chunk.slice(0, sIdx));
+              const after = chunk.slice(sIdx + ABOUT_START.length);
+              const e = after.indexOf(ABOUT_END);
+              if (e !== -1) {
+                await renderAbout();
+                const rest = after.slice(e + ABOUT_END.length);
+                if (rest) term.write(rest);
+              } else {
+                aboutBuffer = [after];
+              }
+              return;
+            }
+
             const { pre, post, welcome } = splitWelcomeMarker(chunk);
             if (welcome) {
               if (pre) term.write(pre);

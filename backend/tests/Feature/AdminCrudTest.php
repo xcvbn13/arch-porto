@@ -192,6 +192,63 @@ class AdminCrudTest extends TestCase
         $this->getJson('/api/v1/profile')->assertJsonPath('data.name', 'Imam Baru');
     }
 
+    public function test_public_profile_includes_about_layout_defaults(): void
+    {
+        $this->getJson('/api/v1/profile')
+            ->assertOk()
+            ->assertJsonPath('data.about_layout.logo_width', 180)
+            ->assertJsonPath('data.about_layout.gap', 14)
+            ->assertJsonPath('data.about_layout.text_width', 420);
+    }
+
+    public function test_admin_can_update_about_layout(): void
+    {
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 520,
+        ])->assertOk();
+
+        $this->getJson('/api/v1/profile')
+            ->assertJsonPath('data.about_layout.logo_width', 220)
+            ->assertJsonPath('data.about_layout.gap', 30)
+            ->assertJsonPath('data.about_layout.text_width', 520);
+    }
+
+    public function test_about_layout_validation(): void
+    {
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 10, // di bawah 40
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 520,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['logo_width']);
+
+        // Batas atas text_width untuk segmen Profile = 1000
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 1200,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['text_width']);
+
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 1000,
+        ])->assertOk();
+    }
+
     public function test_project_screenshots_upload_serve_delete(): void
     {
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');

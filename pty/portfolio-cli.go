@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -176,6 +177,23 @@ func readPassword(prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
+func fetchImageB64(u string) (string, int, bool) {
+	client := &http.Client{Timeout: 8 * time.Second}
+	res, err := client.Get(u)
+	if err != nil {
+		return "", 0, false
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 400 {
+		return "", 0, false
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", 0, false
+	}
+	return base64.StdEncoding.EncodeToString(body), len(body), true
+}
+
 func hAbout(a []string) {
 	if len(a) > 0 {
 		errOut("about: no arguments needed.")
@@ -191,6 +209,10 @@ func hAbout(a []string) {
 		errOut("Terjadi kesalahan saat memproses data.")
 		return
 	}
+	// Teks dibungkus marker: frontend mendeteksinya dan mengganti blok ini
+	// dengan satu canvas (foto kiri + teks kanan). Klien teks murni melihat
+	// teks biasa (marker OSC tidak tampil).
+	fmt.Print("\x1b]1337;Portfolio=about-start\x07")
 	fmt.Printf("%s%s%s%s\n", bold, green, s(d["name"]), rst)
 	fmt.Printf("%s%s%s\n", cyan, s(d["role"]), rst)
 	if s(d["tagline"]) != "" {
@@ -200,6 +222,7 @@ func hAbout(a []string) {
 	for _, l := range wrap(s(d["bio"]), 80) {
 		fmt.Println(l)
 	}
+	fmt.Print("\x1b]1337;Portfolio=about-end\x07")
 }
 
 func hSkills(a []string) {

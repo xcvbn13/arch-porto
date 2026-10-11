@@ -1,5 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { iipImage, splitWelcomeMarker, WELCOME_MARKER } from "./img";
+import {
+  iipImage,
+  splitWelcomeMarker,
+  wrapTextPx,
+  WELCOME_MARKER,
+  ABOUT_START,
+  ABOUT_END,
+} from "./img";
+
+/** ctx palsu: setiap karakter = 10px (tanpa canvas asli di jsdom). */
+const fakeCtx = {
+  measureText: (s: string) => ({ width: s.length * 10 }),
+} as unknown as CanvasRenderingContext2D;
+
+describe("wrapTextPx (word-aware)", () => {
+  it("memotong di spasi, bukan di tengah kata", () => {
+    // "hello world foo" = 15 chars = 150px; kolom 120px → "hello world" + "foo"
+    expect(wrapTextPx(fakeCtx, "hello world foo", 120)).toEqual(["hello world", "foo"]);
+  });
+
+  it("tidak membelah kata pada bio kalimat panjang", () => {
+    const text = "developing web applications and backend systems";
+    const lines = wrapTextPx(fakeCtx, text, 200); // 20 chars per baris
+    for (const l of lines) {
+      // setiap baris ≤ 20 karakter dan tidak berakhir di tengah kata
+      expect(l.length).toBeLessThanOrEqual(20);
+    }
+    // Gabungan kata tetap utuh (spasi dinormalkan saat join)
+    expect(lines.join(" ").replace(/\s+/g, " ")).toBe(text);
+  });
+
+  it("hard-break hanya untuk kata yang lebih panjang dari kolom", () => {
+    expect(wrapTextPx(fakeCtx, "abcdefghijklmnop", 100)).toEqual(["abcdefghij", "klmnop"]);
+  });
+
+  it("baris kosong tetap kosong", () => {
+    expect(wrapTextPx(fakeCtx, "", 100)).toEqual([""]);
+  });
+});
 
 describe("iipImage (protokol iTerm2 inline image)", () => {
   it("menyertakan size wajib dan lebar piksel", () => {
@@ -23,6 +61,15 @@ describe("splitWelcomeMarker (clear → render ulang welcome)", () => {
     expect(r.welcome).toBe(false);
     expect(r.pre).toBe("echo halo\r\n");
     expect(r.post).toBe("");
+  });
+
+  it("ABOUT_START/END membungkus blok teks about", () => {
+    const chunk = "a" + ABOUT_START + "isi-about" + ABOUT_END + "z";
+    expect(chunk.indexOf(ABOUT_START)).toBeGreaterThan(-1);
+    expect(chunk.indexOf(ABOUT_END)).toBeGreaterThan(chunk.indexOf(ABOUT_START));
+    // Marker tidak berisi newline sehingga aman diproses per-chunk
+    expect(ABOUT_START).not.toContain("\n");
+    expect(ABOUT_END).not.toContain("\n");
   });
 });
 

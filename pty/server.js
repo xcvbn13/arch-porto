@@ -19,7 +19,7 @@ const VERIFY_URL =
   process.env.PTY_VERIFY_URL || "http://backend:8080/api/v1/pty/verify";
 const MAX_SESSIONS = parseInt(process.env.PTY_MAX_SESSIONS || "20", 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.PTY_IDLE_TIMEOUT || "600000", 10);
-const OUTPUT_LIMIT = parseInt(process.env.PTY_OUTPUT_LIMIT || "524288", 10);
+const OUTPUT_LIMIT = parseInt(process.env.PTY_OUTPUT_LIMIT || "2097152", 10);
 
 let active = 0;
 

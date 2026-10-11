@@ -99,4 +99,28 @@ class FetchEntryController extends Controller
 
         return response()->json(['data' => $data]);
     }
+
+    /** Layout canvas about (foto kiri + teks kanan). */
+    public function updateAboutLayout(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'logo_width' => ['required', 'integer', 'between:40,480'],
+            'logo_height' => ['required', 'integer', 'between:40,480'],
+            'gap' => ['required', 'integer', 'between:0,96'],
+            'font_size' => ['required', 'integer', 'between:9,28'],
+            'line_height' => ['required', 'integer', 'between:10,48'],
+            'text_width' => ['required', 'integer', 'between:160,1000'],
+        ]);
+
+        $profile = Profile::query()->firstOrCreate(['id' => 1], [
+            'name' => 'Portfolio', 'role' => 'Owner', 'bio' => '',
+        ]);
+        $profile->update(['about_layout' => $data]);
+
+        Log::channel('admin')->info('About layout updated.', [
+            'user_id' => (string) $request->user()?->id,
+        ]);
+
+        return response()->json(['data' => $data]);
+    }
 }

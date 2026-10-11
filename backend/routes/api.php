@@ -58,6 +58,7 @@ Route::prefix('admin')->middleware(['admin', EncryptCookies::class, StartSession
     Route::put('/fetch/{id}', [FetchEntryController::class, 'update'])->whereNumber('id');
     Route::delete('/fetch/{id}', [FetchEntryController::class, 'destroy'])->whereNumber('id');
     Route::put('/fetch-layout', [FetchEntryController::class, 'updateLayout']);
+    Route::put('/about-layout', [FetchEntryController::class, 'updateAboutLayout']);
 
     Route::put('/terminal-style', [AdminTerminalStyleController::class, 'update']);
 
