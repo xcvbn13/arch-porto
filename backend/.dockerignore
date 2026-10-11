@@ -1,0 +1,9 @@
+vendor
+node_modules
+.env
+storage/logs/*
+tests
+.git
+.dockerignore
+bootstrap/cache/*.php
+database/database.sqlite

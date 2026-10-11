@@ -1,0 +1,17 @@
+Welcome to the REAL Arch Linux sandbox (read-only).
+
+What is real:
+- This output comes from an actual Arch Linux container (non-root user 'visitor').
+- 'pacman -Q' reads real package metadata; 'fastfetch' is the real binary.
+
+What is NOT here:
+- No interactive shell (user visitor has /usr/bin/false).
+- No arbitrary commands: every command is a fixed allowlisted handler.
+- No network access, read-only root filesystem, limited CPU/RAM/PIDs.
+
+Try:
+  fastfetch
+  pacman -Q
+  uname
+  ls
+  cat welcome.txt

@@ -1,0 +1,6 @@
+# .bashrc pengunjung (read-only, di-bake saat build).
+# 'help' bawaan bash dinonaktifkan agar 'help' terarah ke dispatcher
+# /opt/bin/help. PS1 hanya dipasang di sini bila env PS1 kosong —
+# bridge menyetel PS1 powerline sesuai style yang dikonfigurasi pemilik.
+enable -n help 2>/dev/null
+[ -z "$PS1" ] && PS1='\[\e[48;2;0;215;135m\e[38;2;0;0;0m\] visitor@imam-portfolio \[\e[49m\e[38;2;0;215;135m\]❯\[\e[0m\] \[\e[38;2;212;217;224m\]\w\[\e[0m\] \$ '

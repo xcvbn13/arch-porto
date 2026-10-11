@@ -1,0 +1,10 @@
+{
+  "name": "portfolio-pty-server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PTY bridge: xterm.js WebSocket -> bash di container Arch read-only",
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.0"
+  }
+}

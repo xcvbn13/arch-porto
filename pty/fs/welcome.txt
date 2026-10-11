@@ -1,0 +1,9 @@
+Welcome to the real Arch shell — READ-ONLY.
+
+- User: visitor (non-root). Hostname: imam-portfolio.
+- PATH: /opt/bin — only curated read-only tools (ls, cat, grep, pacman, fastfetch, ...).
+- No sh/python/curl/dd/sudo/chmod — anything outside the list is "command not found".
+- Filesystem is read-only: write attempts fail at the OS level (except the
+  small capped /tmp tmpfs, noexec).
+- No network access from this container.
+- Type 'exit' to return to the portfolio shell.

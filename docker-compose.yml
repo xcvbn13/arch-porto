@@ -1,0 +1,133 @@
+name: imam-portfolio
+
+services:
+  # ===== Satu-satunya service yang publish port (reverse proxy + static) =====
+  frontend:
+    build: ./frontend
+    container_name: portfolio-frontend
+    ports:
+      - "${APP_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [edge, ptyedge]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # ===== API Laravel - TIDAK dipublish ke publik =====
+  backend:
+    build: ./backend
+    container_name: portfolio-backend
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      APP_AUTO_MIGRATE: ${APP_AUTO_MIGRATE:-true}
+      DB_CONNECTION: pgsql
+      DB_HOST: database
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-portfolio}
+      DB_USERNAME: ${DB_USERNAME:-portfolio}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum diatur - salin .env.example ke .env}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      LOG_LEVEL: warning
+      # Akun root (perintah config-admin → panel /admin; lihat seeders/data/admins.php)
+      ROOT_PASSWORD: ${ROOT_PASSWORD:-change-me-root-password}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin-password}
+      # PTY shell (bash read-only) — default NONAKTIF
+      ARCH_PTY_ENABLED: ${ARCH_PTY_ENABLED:-false}
+      PTY_SESSION_TTL: ${PTY_SESSION_TTL:-300}
+      PTY_MAX_SESSIONS: ${PTY_MAX_SESSIONS:-100}
+    volumes:
+      # Avatar yang di-upload pemilik (persisten antar rebuild)
+      - avatar-storage:/app/storage/app/avatars
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [edge, dbnet, sandboxnet]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/up"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # ===== PostgreSQL - jaringan internal saja =====
+  database:
+    image: postgres:17-alpine
+    container_name: portfolio-database
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-portfolio}
+      POSTGRES_USER: ${DB_USERNAME:-portfolio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum diatur — salin .env.example ke .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [dbnet]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-portfolio} -d ${DB_DATABASE:-portfolio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== PTY shell Arch (bash read-only, PATH terkurasi) — OPSIONAL =====
+  # Nonaktif default; aktifkan dengan ARCH_PTY_ENABLED=true + profile sandbox.
+  # Lihat README → "Shell Arch Nyata (PTY)".
+  pty:
+    profiles: ["sandbox"]
+    build: ./pty
+    container_name: portfolio-pty
+    hostname: imam-portfolio
+    environment:
+      PTY_VERIFY_URL: http://backend:8080/api/v1/pty/verify
+      PTY_MAX_SESSIONS: ${PTY_MAX_SESSIONS:-100}
+      PTY_IDLE_TIMEOUT: ${PTY_IDLE_TIMEOUT:-300000}
+      PTY_OUTPUT_LIMIT: ${PTY_OUTPUT_LIMIT:-524288}
+    networks: [ptyedge, sandboxnet]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec
+    security_opt:
+      - no-new-privileges:true
+    # Root terkurung: semua capabilities dibuang kecuali SETUID/SETGID —
+    # satu-satunya fungsinya menurunkan proses PTY ke uid/gid 1000 (visitor).
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  edge: {}
+  dbnet: {}
+  # ptyedge: internal, tanpa gateway keluar (frontend <-> pty)
+  ptyedge:
+    internal: true
+  # internal: true * tanpa gateway keluar (sandbox tidak bisa ke internet)
+  sandboxnet:
+    internal: true
+
+volumes:
+  pgdata:
+  avatar-storage:

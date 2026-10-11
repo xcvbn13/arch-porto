@@ -1,0 +1,2 @@
+This file is baked into the sandbox image at build time.
+The visitor account cannot create, modify, or delete anything here.

@@ -1,0 +1,10 @@
+visitor@imam-portfolio — sandbox account
+========================================
+
+User      : visitor (uid 1000, non-root)
+Hostname  : imam-portfolio
+Home      : /home/visitor (read-only)
+Shell     : none (allowlisted command handlers only)
+
+This sandbox exists to demonstrate a few real Arch commands safely.
+It is not a general-purpose remote shell and never will be.

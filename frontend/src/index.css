@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+:root {
+  --term-bg: #0c0f14;
+  --term-fg: #d4d9e0;
+  --term-green: #00d787;
+  --term-cyan: #35c9e8;
+  --term-blue: #4f8cff;
+  --term-dim: #7a8494;
+  --term-red: #ff6b6b;
+  --term-yellow: #ffd166;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(1200px 800px at 80% -10%, #12202c 0%, var(--term-bg) 55%),
+    var(--term-bg);
+  color: var(--term-fg);
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  overscroll-behavior: none;
+}
+
+.term-container {
+  height: 100%;
+  width: 100%;
+  --term-accent: var(--term-green);
+}
+
+.term-container .xterm {
+  height: 100%;
+  padding: 0.5rem 0 0.5rem 0.75rem;
+}
+
+.xterm .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: var(--term-accent, #2a313d) transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--term-accent, #2a313d);
+  border-radius: 4px;
+}
+
+/* Blinking block cursor */
+.xterm .xterm-cursor-layer {
+  animation: none;
+}
+
+.status-chip {
+  border: 1px solid;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Mobile input bar */
+.mobile-input-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #0e1218;
+  border-top: 1px solid #1f2733;
+  padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 20;
+}
+
+.mobile-input-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--term-fg);
+  font-family: inherit;
+  font-size: 1rem;
+  caret-color: var(--term-green);
+}
+
+.mobile-input-bar input:focus-visible {
+  outline: 2px solid var(--term-green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Komponen admin panel */
+.btn-primary {
+  align-self: flex-start;
+  border: 1px solid var(--term-green);
+  color: var(--term-green);
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+.btn-primary:hover {
+  background: rgba(0, 215, 135, 0.1);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.btn-ghost {
+  align-self: flex-start;
+  border: 1px solid #2a313d;
+  color: var(--term-dim);
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+.btn-ghost:hover {
+  border-color: var(--term-fg);
+  color: var(--term-fg);
+}
+
+.field-input {
+  background: #0c0f14;
+  border: 1px solid #1f2733;
+  border-radius: 0.25rem;
+  color: var(--term-fg);
+  padding: 0.4rem 0.6rem;
+}
+
+.field-input:focus-visible {
+  outline: 2px solid var(--term-green);
+  outline-offset: 1px;
+}

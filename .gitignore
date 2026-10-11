@@ -1,0 +1,18 @@
+# Environment & secrets
+.env
+*.env.local
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# PHP/Laravel
+backend/vendor/
+backend/.env
+backend/storage/logs/*
+backend/node_modules/
+
+# Editor/OS
+.DS_Store
+*.log
+docker-compose.override.yml
