@@ -31,14 +31,16 @@ services:
       APP_URL: ${APP_URL:-http://localhost:8080}
       APP_AUTO_MIGRATE: ${APP_AUTO_MIGRATE:-true}
       DB_CONNECTION: pgsql
-      DB_HOST: database
-      DB_PORT: "5432"
+      # Database eksternal: container postgres_16 (project docker-database-global)
+      DB_HOST: ${DB_HOST:-postgres_16}
+      DB_PORT: ${DB_PORT:-5432}
       DB_DATABASE: ${DB_DATABASE:-portfolio}
       DB_USERNAME: ${DB_USERNAME:-portfolio}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum diatur - salin .env.example ke .env}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
       CACHE_STORE: file
       SESSION_DRIVER: file
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
       LOG_LEVEL: warning
       # Akun root (perintah config-admin → panel /admin; lihat seeders/data/admins.php)
       ROOT_PASSWORD: ${ROOT_PASSWORD:-change-me-root-password}
@@ -50,10 +52,7 @@ services:
     volumes:
       # Avatar yang di-upload pemilik (persisten antar rebuild)
       - avatar-storage:/app/storage/app/avatars
-    depends_on:
-      database:
-        condition: service_healthy
-    networks: [edge, dbnet, sandboxnet]
+    networks: [edge, sandboxnet, postgres_16_network]
     restart: unless-stopped
     logging:
       driver: json-file
@@ -64,26 +63,14 @@ services:
       timeout: 3s
       retries: 3
 
-  # ===== PostgreSQL - jaringan internal saja =====
-  database:
-    image: postgres:17-alpine
-    container_name: portfolio-database
-    environment:
-      POSTGRES_DB: ${DB_DATABASE:-portfolio}
-      POSTGRES_USER: ${DB_USERNAME:-portfolio}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum diatur — salin .env.example ke .env}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks: [dbnet]
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-portfolio} -d ${DB_DATABASE:-portfolio}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # ===== PostgreSQL 16 EKSTERNAL =====
+  # Database dijalankan oleh project terpisah `postgres_16`
+  # (/home/ubuntu/docker-database-global/postgres_16, image postgres:16).
+  # Backend hanya menempel ke jaringannya — tidak ada service DB di sini.
+  # Buat database/user awal (sekali saja):
+  #   docker exec postgres_16 psql -U postgresql_user_root -d postgres \
+  #     -c "CREATE ROLE portfolio LOGIN PASSWORD '...';" \
+  #     -c "CREATE DATABASE portfolio OWNER portfolio;"
 
   # ===== PTY shell Arch (bash read-only, PATH terkurasi) — OPSIONAL =====
   # Nonaktif default; aktifkan dengan ARCH_PTY_ENABLED=true + profile sandbox.
@@ -120,7 +107,10 @@ services:
 
 networks:
   edge: {}
-  dbnet: {}
+  # Database eksternal: jaringan milik project postgres_16 (docker-database-global)
+  postgres_16_network:
+    external: true
+    name: postgres_16_network
   # ptyedge: internal, tanpa gateway keluar (frontend <-> pty)
   ptyedge:
     internal: true
@@ -129,5 +119,4 @@ networks:
     internal: true
 
 volumes:
-  pgdata:
   avatar-storage:

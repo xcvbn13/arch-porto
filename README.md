@@ -48,7 +48,7 @@ flowchart LR
     B[xterm.js<br/>terminal emulator] -->|WebSocket /pty| N[Nginx edge]
     N --> P[PTY bridge<br/>node-pty → bash<br/>PATH=/opt/bin]
     P -->|portfolio CLI| L[Laravel 12 API]
-    L --> D[(PostgreSQL 17)]
+    L --> D[(PostgreSQL 16)]
     B -->|/api| N --> L
     N --> A[/admin SPA<br/>owner panel/]
 ```
@@ -70,7 +70,7 @@ flowchart LR
 |---|---|
 | Shell | Arch Linux container · bash · node-pty · Go dispatcher |
 | Frontend | React · TypeScript · Vite · xterm.js · Tailwind CSS |
-| Backend | Laravel 12 · PHP 8.4 · PostgreSQL 17 |
+| Backend | Laravel 12 · PHP 8.4 · PostgreSQL 16 |
 | Infra | Docker Compose · Nginx · FrankenPHP |
 
 ## 🔒 Security

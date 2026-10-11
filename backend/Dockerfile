@@ -29,6 +29,8 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
     && chown -R www-data:www-data storage bootstrap/cache
 
 COPY docker/Caddyfile /etc/caddy/Caddyfile
+# Batas upload PHP (default 2M terlalu kecil untuk file portfolio 5MB)
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/99-uploads.ini
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -18,7 +18,7 @@ flowchart LR
     N[Nginx edge<br/>static + /api proxy + /pty WebSocket]
     P[PTY bridge Node<br/>node-pty → bash visitor<br/>PATH=/opt/bin terkurasi]
     L[Laravel 12 API<br/>/api/v1 · validasi · rate limit]
-    D[(PostgreSQL 17)]
+    D[(PostgreSQL 16 eksternal)]
     A[/admin SPA<br/>panel kelola data]
 
     B -->|WS /pty + tiket| N --> P
@@ -61,7 +61,7 @@ Tidak tersedia (di luar allowlist): `sh`, `python`, `curl`, `dd`, `chmod`,
 |---|---|
 | Frontend | React 18, TypeScript, Vite, xterm.js (+@xterm/addon-fit), Tailwind CSS 4 |
 | Testing FE | Vitest + React Testing Library |
-| Backend | Laravel 12, PHP 8.4 (FrankenPHP), PostgreSQL 17 |
+| Backend | Laravel 12, PHP 8.4 (FrankenPHP), PostgreSQL 16 (eksternal) |
 | Testing BE | PHPUnit (sqlite in-memory) |
 | Infra | Docker Compose, Nginx (edge reverse proxy), Arch Linux (sandbox opsional) |
 
@@ -139,10 +139,10 @@ docker run --rm -v "$PWD/backend":/app -w /app -u "$(id -u):$(id -g)" \
 ### Menjalankan Docker Compose
 
 ```bash
-docker compose up -d --build       # frontend + backend + database
+docker compose up -d --build       # frontend + backend (DB eksternal postgres_16)
 docker compose ps                  # status + health
 docker compose logs -f backend     # log API
-docker compose down                # stop (data DB tetap di volume pgdata)
+docker compose down                # stop (data DB tetap di postgres_16)
 ```
 
 ## Referensi Environment Variables
@@ -402,9 +402,11 @@ dari memori container — keduanya tidak sama.
 
 ## Backup dan Recovery
 
-- Satu-satunya data persisten: volume `pgdata` (PostgreSQL).
-  Backup: `docker compose exec database pg_dump -U portfolio portfolio > backup.sql`
-  Restore: `docker compose exec -T database psql -U portfolio portfolio < backup.sql`
+- Satu-satunya data persisten: database `portfolio` di container eksternal
+  `postgres_16` (project `docker-database-global`).
+  Backup: `docker exec postgres_16 pg_dump -U portfolio portfolio > backup.sql`
+  Restore: `docker exec -i postgres_16 psql -U portfolio portfolio < backup.sql`
+  (tambahkan `PGPASSWORD=<password>` di depan perintah bila perlu).
 - Pesan kontak ikut ter-backup bersama dump database.
 - Konfigurasi (seeder) tersimpan di git — bukan state runtime.
 
