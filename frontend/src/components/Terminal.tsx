@@ -5,6 +5,7 @@ import { ImageAddon } from "@xterm/addon-image";
 import "@xterm/xterm/css/xterm.css";
 import { api, ApiError, memoPromise } from "../terminal/api";
 import { iipImage, wrapTextPx, CLEAR_SCREEN_RE, ABOUT_START, ABOUT_END, PROJECT_START_PREFIX, PROJECT_END, WELCOME_MARKER, holdTail, canvasLinkBand, type CanvasLinkBand } from "../terminal/img";
+import { isVerticalLayout, mobileFontSize } from "../terminal/mobile";
 import {
   buildTheme,
   DEFAULT_STYLE,
@@ -62,6 +63,20 @@ const DEFAULT_PROJECTS_LAYOUT: ProjectsLayoutData = {
   text_width: 420,
 };
 
+/** Chip perintah cepat di bar input mobile (tap = isi ke input). */
+const QUICK_COMMANDS = [
+  "about",
+  "projects",
+  "show all",
+  "skills",
+  "experience",
+  "education",
+  "certifications",
+  "publications",
+  "help",
+  "clear",
+];
+
 /** Style & layout jarang berubah — cukup diambil sekali per page-load,
  *  dipakai bersama oleh banner, about, dan semua canvas proyek. */
 const getTerminalStyle = memoPromise(() => api.get<TerminalStyle>("/terminal-style"));
@@ -81,7 +96,13 @@ function renderCellSize(term: XTerm): { w: number; h: number } {
 
 export default function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // Riwayat perintah mobile (↑/↓) — tidak ikut re-mount effect.
+  const historyRef = useRef<string[]>([]);
+  const histPosRef = useRef(-1);
 
   const [status, setStatus] = useState<Status>("connecting");
   const [isTouch, setIsTouch] = useState(false);
@@ -120,6 +141,12 @@ export default function Terminal() {
     term.loadAddon(new ImageAddon({ pixelLimit: 1 << 24 }));
     term.open(container);
     fit.fit();
+    if (isTouch && term.textarea) {
+      // Ketik via bar input — textarea xterm tidak boleh memunculkan
+      // keyboard native (disableStdin hanya mematikan data, bukan fokus).
+      term.textarea.readOnly = true;
+      term.textarea.inputMode = "none";
+    }
 
     // Overlay link untuk URL yang DIGAMBAR di dalam canvas proyek (gambar
     // tidak punya teks): provider memetakan baris buffer → URL sehingga
@@ -157,6 +184,24 @@ export default function Terminal() {
     const onWinResize = () => fit.fit();
     window.addEventListener("resize", onWinResize);
 
+    // Layout sadar keyboard: iOS tidak mengecilkan layout viewport saat
+    // keyboard terbuka, jadi tinggi/posisi wrapper mengikuti visualViewport.
+    // Bar input absolute di dalam wrapper → selalu tepat di atas keyboard,
+    // dan container diberi padding setinggi bar agar baris terakhir terlihat.
+    const applyViewport = () => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const vv = window.visualViewport;
+      wrap.style.height = `${Math.round(vv ? vv.height : window.innerHeight)}px`;
+      wrap.style.top = `${Math.round(vv ? vv.offsetTop : 0)}px`;
+      const bar = barRef.current;
+      container.style.paddingBottom = bar ? `${bar.offsetHeight + 8}px` : "0px";
+      fit.fit();
+    };
+    applyViewport();
+    window.visualViewport?.addEventListener("resize", applyViewport);
+    window.visualViewport?.addEventListener("scroll", applyViewport);
+
     let disposed = false;
 
     // Terapkan style yang dikonfigurasi pemilik (live) — fallback default.
@@ -164,7 +209,7 @@ export default function Terminal() {
       .then((style) => {
         if (disposed) return;
         term.options.theme = buildTheme(style);
-        term.options.fontSize = style.font_size;
+        term.options.fontSize = mobileFontSize(style.font_size, isTouch);
         term.options.cursorBlink = style.blink;
         term.options.fontFamily = fontStack(style.font_family);
         const weight = /^[1-9]00$/.test(style.font_weight)
@@ -180,9 +225,8 @@ export default function Terminal() {
           container.style.padding = `${style.padding}px`;
           container.style.opacity = String(style.opacity);
           container.style.setProperty("--term-accent", style.accent);
-          if (isTouch) container.style.paddingBottom = "80px";
         }
-        fit.fit();
+        applyViewport();
       })
       .catch(() => {
         /* pakai default */
@@ -263,13 +307,26 @@ export default function Terminal() {
           const measure = document.createElement("canvas").getContext("2d");
           if (!measure) throw new Error("canvas unavailable");
           measure.font = font;
+          // Layar sempit (mobile): logo di atas, info di bawah, dan lebar
+          // teks dibatasi lebar terminal agar tidak ikut mengecil.
+          const vertical = isVerticalLayout(term.cols);
+          const availW = term.cols * renderCellSize(term).w;
+          const maxTextW = vertical ? Math.max(200, Math.floor(availW - 24)) : layout.text_width;
           const longest = Math.max(80, ...lines.map((l) => measure.measureText(l).width));
-          const textW = Math.min(layout.text_width, Math.ceil(longest) + 4);
+          const textW = Math.min(maxTextW, Math.ceil(longest) + 4);
           const wrapped = lines.flatMap((l) => wrapTextPx(measure, l, textW));
 
-          const W = Math.ceil(logoW + pad + textW + pad);
-          const H = Math.max(logoH, wrapped.length * lineH + 10);
-          const approxTermW = term.cols * 8.4;
+          const W = vertical
+            ? Math.ceil(Math.max(logoW, textW) + pad * 2)
+            : Math.ceil(logoW + pad + textW + pad);
+          const H = vertical
+            ? 5 + logoH + pad + wrapped.length * lineH + 12
+            : Math.max(logoH, wrapped.length * lineH + 10);
+          const logoY = vertical ? 5 : Math.round((H - logoH) / 2);
+          const logoX = vertical ? Math.round((W - logoW) / 2) : 0;
+          const textX = vertical ? pad : logoW + pad;
+          const textY0 = vertical ? 5 + logoH + pad : 5;
+          const approxTermW = term.cols * renderCellSize(term).w;
           const outScale = Math.min(1, (approxTermW * 0.92) / W);
           const outW = Math.max(64, Math.round(W * outScale));
           const outH = Math.max(24, Math.round(H * outScale));
@@ -283,21 +340,20 @@ export default function Terminal() {
           ctx.fillStyle = c.bg; // mengikuti style terminal
           ctx.fillRect(0, 0, W, H);
           // Logo dengan sudut membulat + bayangan accent halus
-          const logoY = Math.round((H - logoH) / 2);
           ctx.save();
           ctx.shadowColor = c.accent + "55";
           ctx.shadowBlur = 16;
           ctx.beginPath();
-          ctx.roundRect(0, logoY, logoW, logoH, 8);
+          ctx.roundRect(logoX, logoY, logoW, logoH, 8);
           ctx.clip();
-          ctx.drawImage(img, 0, logoY, logoW, logoH);
+          ctx.drawImage(img, logoX, logoY, logoW, logoH);
           ctx.restore();
           ctx.textBaseline = "top";
           for (let i = 0; i < wrapped.length; i++) {
-            const y = 5 + i * lineH;
+            const y = textY0 + i * lineH;
             if (i === 0) {
               ctx.font = `bold ${font}`;
-              const grad = ctx.createLinearGradient(logoW + pad, 0, logoW + pad + textW, 0);
+              const grad = ctx.createLinearGradient(textX, 0, textX + textW, 0);
               grad.addColorStop(0, c.accent);
               grad.addColorStop(1, c.fg);
               ctx.fillStyle = grad;
@@ -308,7 +364,7 @@ export default function Terminal() {
               ctx.font = font;
               ctx.fillStyle = c.fg;
             }
-            ctx.fillText(wrapped[i], logoW + pad, y);
+            ctx.fillText(wrapped[i], textX, y);
           }
           const png = canvas.toDataURL("image/png");
           const b64 = png.slice(png.indexOf(",") + 1);
@@ -415,13 +471,28 @@ export default function Terminal() {
         const measure = document.createElement("canvas").getContext("2d");
         if (!measure) throw new Error("canvas unavailable");
         measure.font = font;
+        // Layar sempit (mobile): foto di atas, teks di bawah; lebar teks
+        // dibatasi lebar terminal supaya tidak ikut mengecil.
+        const vertical = isVerticalLayout(term.cols);
+        const availW = term.cols * renderCellSize(term).w;
+        const maxTextW = vertical ? Math.max(200, Math.floor(availW - 24)) : layout.text_width;
         const longest = Math.max(80, ...lines.map((l) => measure.measureText(l).width));
-        const textW = Math.min(layout.text_width, Math.ceil(longest) + 4);
+        const textW = Math.min(maxTextW, Math.ceil(longest) + 4);
         const wrapped = lines.flatMap((l) => wrapTextPx(measure, l, textW));
 
-        const W = Math.ceil(logoW + pad + textW + pad);
-        const H = Math.max(logoH, wrapped.length * lineH + 10);
-        const approxTermW = term.cols * 8.4;
+        // Layar sempit (mobile): logo di atas, teks di bawah — di layar lebar
+        // tetap berdampingan seperti semula.
+        const W = vertical
+          ? Math.ceil(Math.max(logoW, textW) + pad * 2)
+          : Math.ceil(logoW + pad + textW + pad);
+        const H = vertical
+          ? 5 + logoH + pad + wrapped.length * lineH + 12
+          : Math.max(logoH, wrapped.length * lineH + 10);
+        const logoY = vertical ? 5 : Math.round((H - logoH) / 2);
+        const logoX = vertical ? Math.round((W - logoW) / 2) : 0;
+        const textX = vertical ? pad : logoW + pad;
+        const textY0 = vertical ? 5 + logoH + pad : 5;
+        const approxTermW = term.cols * renderCellSize(term).w;
         const outScale = Math.min(1, (approxTermW * 0.92) / W);
         const outW = Math.max(64, Math.round(W * outScale));
         const outH = Math.max(24, Math.round(H * outScale));
@@ -434,18 +505,17 @@ export default function Terminal() {
         ctx.scale(dpr * outScale, dpr * outScale);
         ctx.fillStyle = c.bg;
         ctx.fillRect(0, 0, W, H);
-        const logoY = Math.round((H - logoH) / 2);
         ctx.save();
         ctx.shadowColor = c.accent + "55";
         ctx.shadowBlur = 16;
         ctx.beginPath();
-        ctx.roundRect(0, logoY, logoW, logoH, 8);
+        ctx.roundRect(logoX, logoY, logoW, logoH, 8);
         ctx.clip();
-        ctx.drawImage(img, 0, logoY, logoW, logoH);
+        ctx.drawImage(img, logoX, logoY, logoW, logoH);
         ctx.restore();
         ctx.textBaseline = "top";
         for (let i = 0; i < wrapped.length; i++) {
-          const y = 5 + i * lineH;
+          const y = textY0 + i * lineH;
           if (i === 0) {
             ctx.font = `bold ${font}`;
             ctx.fillStyle = c.accent;
@@ -459,7 +529,7 @@ export default function Terminal() {
             ctx.font = font;
             ctx.fillStyle = c.fg;
           }
-          if (wrapped[i]) ctx.fillText(wrapped[i], logoW + pad, y);
+          if (wrapped[i]) ctx.fillText(wrapped[i], textX, y);
         }
         const png = canvas.toDataURL("image/png");
         const b64 = png.slice(png.indexOf(",") + 1);
@@ -548,16 +618,26 @@ export default function Terminal() {
         const measure = document.createElement("canvas").getContext("2d");
         if (!measure) throw new Error("canvas unavailable");
         measure.font = font;
+        // Layar sempit (mobile): tata vertikal; lebar teks dibatasi lebar
+        // terminal supaya teks tidak ikut mengecil.
+        const vertical = isVerticalLayout(term.cols);
+        const cellDims = renderCellSize(term);
+        const availW = term.cols * cellDims.w;
+        const textW = vertical
+          ? Math.min(layout.text_width, Math.max(240, Math.floor(availW - 24)))
+          : layout.text_width;
 
         type L = { t: string; s: "title" | "label" | "body" | "dim" };
-        const lines: L[] = [
-          { t: `#${p.id} ${p.title}` + (p.year ? ` (${p.year})` : ""), s: "title" },
-          { t: "─".repeat(40), s: "dim" },
-        ];
+        const lines: L[] = [];
+        // Judul ikut di-wrap (di layar sempit bisa lebih panjang dari kolom).
+        for (const w of wrapTextPx(measure, `#${p.id} ${p.title}` + (p.year ? ` (${p.year})` : ""), textW - 8)) {
+          lines.push({ t: w, s: "title" });
+        }
+        lines.push({ t: "─".repeat(40), s: "dim" });
         const add = (label: string, body: string | null | undefined) => {
           if (!body || !body.trim()) return;
           lines.push({ t: label, s: "label" });
-          for (const w of wrapTextPx(measure, body, layout.text_width - 16)) {
+          for (const w of wrapTextPx(measure, body, textW - 16)) {
             lines.push({ t: "  " + w, s: "body" });
           }
         };
@@ -568,7 +648,9 @@ export default function Terminal() {
         add("Architecture", p.architecture);
         if (p.stack?.length) {
           lines.push({ t: "Tech stack", s: "label" });
-          lines.push({ t: "  " + p.stack.join(", "), s: "body" });
+          for (const w of wrapTextPx(measure, p.stack.join(", "), textW - 16)) {
+            lines.push({ t: "  " + w, s: "body" });
+          }
         }
         // Baris URL ikut digambar di canvas (posisi tetap seperti semula);
         // indeksnya dicatat untuk overlay link yang bisa diklik.
@@ -586,7 +668,9 @@ export default function Terminal() {
         if (p.metrics && Object.keys(p.metrics).length) {
           lines.push({ t: "Measured results", s: "label" });
           for (const [k, v] of Object.entries(p.metrics)) {
-            lines.push({ t: `  ${k}: ${v}`, s: "body" });
+            for (const w of wrapTextPx(measure, `${k}: ${v}`, textW - 16)) {
+              lines.push({ t: "  " + w, s: "body" });
+            }
           }
         }
 
@@ -614,11 +698,18 @@ export default function Terminal() {
             ? rects.reduce((a, r) => a + r.h, 0) + shotGap * (rects.length - 1)
             : shotH;
         const textTotal = lines.length * layout.line_height + 12;
-        const H = Math.max(leftTotal, textTotal) + 10;
         const pad = layout.gap;
-        const W = Math.ceil(shotW + pad + layout.text_width + 20);
+        const W = vertical
+          ? Math.ceil(Math.max(shotW, textW) + 20)
+          : Math.ceil(shotW + pad + textW + 20);
+        const H = vertical
+          ? 5 + leftTotal + pad + textTotal
+          : Math.max(leftTotal, textTotal) + 10;
+        const shotX = vertical ? Math.round((W - shotW) / 2) : 0;
+        const tx = vertical ? 10 : shotW + pad;
+        const textY0 = vertical ? 5 + leftTotal + pad : 5;
 
-        const approxTermW = term.cols * 8.4;
+        const approxTermW = term.cols * renderCellSize(term).w;
         const outScale = Math.min(1, (approxTermW * 0.92) / W);
         const outW = Math.max(64, Math.round(W * outScale));
         const outH = Math.max(24, Math.round(H * outScale));
@@ -632,10 +723,10 @@ export default function Terminal() {
         ctx.fillStyle = c.bg;
         ctx.fillRect(0, 0, W, H);
 
-        // Kolom kiri: screenshot stacked / placeholder
+        // Screenshot stacked / placeholder
         let y = 5;
         if (shots.length === 0) {
-          paintPlaceholder(ctx, 0, y, shotW, shotH, c);
+          paintPlaceholder(ctx, shotX, y, shotW, shotH, c);
         } else {
           for (let i = 0; i < shots.length; i++) {
             const r = rects[i];
@@ -643,19 +734,18 @@ export default function Terminal() {
             ctx.shadowColor = c.accent + "55";
             ctx.shadowBlur = 14;
             ctx.beginPath();
-            ctx.roundRect(0, y, r.w, r.h, 6);
+            ctx.roundRect(shotX, y, r.w, r.h, 6);
             ctx.clip();
-            ctx.drawImage(shots[i], 0, y, r.w, r.h);
+            ctx.drawImage(shots[i], shotX, y, r.w, r.h);
             ctx.restore();
             y += r.h + shotGap;
           }
         }
 
-        // Kolom kanan: detail teks
+        // Detail teks
         ctx.textBaseline = "top";
-        const tx = shotW + pad;
         for (let i = 0; i < lines.length; i++) {
-          const ly = 5 + i * layout.line_height;
+          const ly = textY0 + i * layout.line_height;
           const l = lines[i];
           if (l.s === "title") {
             ctx.font = `bold ${font}`;
@@ -691,8 +781,7 @@ export default function Terminal() {
         // Overlay link: canvas itu gambar (tak punya teks), jadi URL
         // Repository/Demo didaftarkan sebagai link pada baris buffer tempat
         // teks URL berada — klik → tab baru.
-        const cell = renderCellSize(term);
-        const imgRows = Math.max(1, Math.ceil(outH / cell.h));
+        const imgRows = Math.max(1, Math.ceil(outH / cellDims.h));
         const topRow = bottomRow0 - imgRows + 2; // 1-based
         for (const ll of linkLines) {
           const wPx = measure.measureText(ll.text).width;
@@ -701,11 +790,11 @@ export default function Terminal() {
               ll.uri,
               topRow,
               imgRows,
-              (5 + ll.idx * layout.line_height) * outScale,
-              (shotW + pad) * outScale + originX * cell.w,
+              (textY0 + ll.idx * layout.line_height) * outScale,
+              tx * outScale + originX * cellDims.w,
               wPx * outScale,
-              cell.w,
-              cell.h,
+              cellDims.w,
+              cellDims.h,
               term.cols,
             ),
           );
@@ -896,58 +985,149 @@ export default function Terminal() {
       }
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
+      window.visualViewport?.removeEventListener("resize", applyViewport);
+      window.visualViewport?.removeEventListener("scroll", applyViewport);
       term.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTouch]);
 
   const submitMobile = () => {
-    const value = mobileInput;
+    const value = mobileInput.trim();
     if (value === "") return;
     setMobileInput("");
+    histPosRef.current = -1;
+    const h = historyRef.current;
+    if (h[h.length - 1] !== value) h.push(value);
+    if (h.length > 50) h.splice(0, h.length - 50);
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(value + "\r");
     }
+    inputRef.current?.focus();
+  };
+
+  const histPrev = () => {
+    const h = historyRef.current;
+    if (!h.length) return;
+    const p = histPosRef.current;
+    const np = p < 0 ? h.length - 1 : Math.max(0, p - 1);
+    histPosRef.current = np;
+    setMobileInput(h[np]);
+  };
+
+  const histNext = () => {
+    const p = histPosRef.current;
+    if (p < 0) return;
+    const h = historyRef.current;
+    const np = p + 1;
+    if (np >= h.length) {
+      histPosRef.current = -1;
+      setMobileInput("");
+    } else {
+      histPosRef.current = np;
+      setMobileInput(h[np]);
+    }
+  };
+
+  const sendRaw = (data: string) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
   };
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={wrapRef} className="term-wrap">
       <div
         ref={containerRef}
-        className={isTouch ? "term-container pb-20" : "term-container"}
+        className="term-container"
+        onClick={() => {
+          if (isTouch) inputRef.current?.focus();
+        }}
       />
       {isTouch && (
-        <div className="mobile-input-bar">
-          <span className="shrink-0 text-[--term-green]">arch$</span>
-          <input
-            value={mobileInput}
-            onChange={(e) => setMobileInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submitMobile();
+        <div ref={barRef} className="mobile-input-bar">
+          <div className="mobile-chips">
+            {QUICK_COMMANDS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="mobile-chip"
+                disabled={status !== "connected"}
+                onClick={() => {
+                  setMobileInput(c);
+                  histPosRef.current = -1;
+                  inputRef.current?.focus();
+                }}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <div className="mobile-input-row">
+            <input
+              ref={inputRef}
+              value={mobileInput}
+              onChange={(e) => setMobileInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitMobile();
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  histPrev();
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  histNext();
+                }
+              }}
+              placeholder={
+                status === "connected" ? "ketik lalu Enter" : "menyambung ke shell…"
               }
-            }}
-            placeholder={
-              status === "connected" ? "ketik lalu Enter" : "menyambung ke shell…"
-            }
-            disabled={status !== "connected"}
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-label="Terminal input"
-          />
-          <button
-            type="button"
-            onClick={submitMobile}
-            disabled={status !== "connected"}
-            className="shrink-0 rounded border border-[--term-green] px-2 py-0.5 text-xs text-[--term-green] disabled:opacity-40"
-            aria-label="Kirim ke shell"
-          >
-            ↵
-          </button>
+              disabled={status !== "connected"}
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="send"
+              aria-label="Terminal input"
+            />
+            <button
+              type="button"
+              className="mobile-key"
+              onClick={histPrev}
+              disabled={status !== "connected"}
+              aria-label="Perintah sebelumnya"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="mobile-key"
+              onClick={histNext}
+              disabled={status !== "connected"}
+              aria-label="Perintah berikutnya"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              className="mobile-key"
+              onClick={() => sendRaw("\x03")}
+              disabled={status !== "connected"}
+              aria-label="Interupsi (Ctrl-C)"
+            >
+              ^C
+            </button>
+            <button
+              type="button"
+              className="mobile-key mobile-key-send"
+              onClick={submitMobile}
+              disabled={status !== "connected"}
+              aria-label="Kirim ke shell"
+            >
+              ↵
+            </button>
+          </div>
         </div>
       )}
     </div>
