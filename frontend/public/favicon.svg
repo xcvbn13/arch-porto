@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label=">_">
+  <!-- Latar terminal -->
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="#0c0f14" stroke="#1f2733" stroke-width="2"/>
+  <!-- Prompt >_ (stroke murni, tanpa font) -->
+  <g fill="none" stroke="#00d787" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 17 L31 32 L13 47"/>
+    <path d="M38 47 H54"/>
+  </g>
+</svg>
