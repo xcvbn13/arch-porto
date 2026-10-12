@@ -94,6 +94,18 @@ export interface ApiClient {
   delete<T>(path: string, signal?: AbortSignal): Promise<T>;
 }
 
+/** Bagi hasil satu pemanggilan ke semua konsumen (mis. style/layout yang
+ *  dipakai banyak canvas) — gagal → direset agar panggilan berikutnya
+ *  mencoba lagi. */
+export function memoPromise<T>(fn: () => Promise<T>): () => Promise<T> {
+  let p: Promise<T> | null = null;
+  return () =>
+    (p ??= fn().catch((e) => {
+      p = null;
+      throw e;
+    }));
+}
+
 export const api: ApiClient = {
   get<T>(path: string, signal?: AbortSignal) {
     return request<T>(path, { method: "GET", headers: { Accept: "application/json" } }, signal);

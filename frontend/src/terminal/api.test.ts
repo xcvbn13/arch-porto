@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { api, ApiError, NetworkError } from "./api";
+import { api, ApiError, NetworkError, memoPromise } from "./api";
 import { jsonResponse, stubFetch } from "../test/helpers";
 
 afterEach(() => {
@@ -53,5 +53,26 @@ describe("api client", () => {
     const p = api.get("/slow", ctrl.signal);
     ctrl.abort();
     await expect(p).rejects.toThrow(NetworkError);
+  });
+});
+
+describe("memoPromise", () => {
+  it("memanggil sekali dan berbagi hasil ke semua konsumen", async () => {
+    const fn = vi.fn(() => Promise.resolve(42));
+    const memo = memoPromise(fn);
+    const [a, b] = await Promise.all([memo(), memo()]);
+    expect(a).toBe(42);
+    expect(b).toBe(42);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("mereset setelah gagal sehingga panggilan berikutnya mencoba lagi", async () => {
+    let n = 0;
+    const memo = memoPromise(() => {
+      n += 1;
+      return n === 1 ? Promise.reject(new Error("boom")) : Promise.resolve(n);
+    });
+    await expect(memo()).rejects.toThrow("boom");
+    await expect(memo()).resolves.toBe(2);
   });
 });

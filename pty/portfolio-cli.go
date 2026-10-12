@@ -7,7 +7,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -111,7 +110,7 @@ func s(v interface{}) string {
 }
 
 func errOut(msg string) { fmt.Printf("%s%s%s\n", red, msg, rst) }
-func note(msg string)  { fmt.Printf("%s%s%s\n", dim, msg, rst) }
+func note(msg string)   { fmt.Printf("%s%s%s\n", dim, msg, rst) }
 
 func osc8(u, text string) string {
 	return "\x1b]8;;" + u + "\x1b\\" + text + "\x1b]8;;\x1b\\"
@@ -177,21 +176,49 @@ func readPassword(prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-func fetchImageB64(u string) (string, int, bool) {
-	client := &http.Client{Timeout: 8 * time.Second}
-	res, err := client.Get(u)
-	if err != nil {
-		return "", 0, false
+// printProjectDetail mencetak detail satu proyek (dipakai `projects`,
+// `projects show <id>`, dan `show all`). Header memuat ID agar bisa
+// ditindaklanjuti dengan `projects show <id>`.
+func printProjectDetail(d map[string]interface{}) {
+	fmt.Printf("%s#%s%s %s%s%s%s", dim, s(d["id"]), rst, bold, green, s(d["title"]), rst)
+	if s(d["year"]) != "" {
+		fmt.Printf(" (%s)", s(d["year"]))
 	}
-	defer res.Body.Close()
-	if res.StatusCode >= 400 {
-		return "", 0, false
+	fmt.Println()
+	fmt.Println(dim + strings.Repeat("─", 40) + rst)
+	for _, kv := range [][2]string{
+		{"Project Affiliation", "summary"},
+		{"Description", "description"},
+		{"Problem solved", "problem"},
+		{"My contribution", "contribution"},
+		{"Architecture", "architecture"},
+	} {
+		if s(d[kv[1]]) != "" {
+			fmt.Printf("%s%s%s\n", cyan, kv[0], rst)
+			for _, l := range wrap(s(d[kv[1]]), 80) {
+				fmt.Println("  " + l)
+			}
+		}
 	}
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return "", 0, false
+	if st, ok := d["stack"].([]interface{}); ok && len(st) > 0 {
+		fmt.Printf("%sTech stack%s\n", cyan, rst)
+		var names []string
+		for _, x := range st {
+			names = append(names, s(x))
+		}
+		fmt.Println("  " + strings.Join(names, ", "))
 	}
-	return base64.StdEncoding.EncodeToString(body), len(body), true
+	for _, kv := range [][2]string{{"Repository", "repo_url"}, {"Demo", "demo_url"}} {
+		if s(d[kv[1]]) != "" {
+			fmt.Printf("%s%s%s  %s\n", cyan, kv[0], rst, linkify(s(d[kv[1]])))
+		}
+	}
+	if m, ok := d["metrics"].(map[string]interface{}); ok && len(m) > 0 {
+		fmt.Printf("%sMeasured results%s\n", cyan, rst)
+		for k, v := range m {
+			fmt.Printf("  %s: %s\n", k, s(v))
+		}
+	}
 }
 
 func hAbout(a []string) {
@@ -295,52 +322,18 @@ func hProjects(a []string) {
 			errOut("Terjadi kesalahan saat memproses data.")
 			return
 		}
-		fmt.Printf("%s%s%s%s", bold, green, s(d["title"]), rst)
-		if s(d["year"]) != "" {
-			fmt.Printf(" (%s)", s(d["year"]))
-		}
-		fmt.Println()
-		fmt.Println(dim + strings.Repeat("─", 40) + rst)
-		for _, kv := range [][2]string{
-			{"Project Affiliation", "summary"},
-			{"Description", "description"},
-			{"Problem solved", "problem"},
-			{"My contribution", "contribution"},
-			{"Architecture", "architecture"},
-		} {
-			if s(d[kv[1]]) != "" {
-				fmt.Printf("%s%s%s\n", cyan, kv[0], rst)
-				for _, l := range wrap(s(d[kv[1]]), 80) {
-					fmt.Println("  " + l)
-				}
-			}
-		}
-		if st, ok := d["stack"].([]interface{}); ok && len(st) > 0 {
-			fmt.Printf("%sTech stack%s\n", cyan, rst)
-			var names []string
-			for _, x := range st {
-				names = append(names, s(x))
-			}
-			fmt.Println("  " + strings.Join(names, ", "))
-		}
-		for _, kv := range [][2]string{{"Repository", "repo_url"}, {"Demo", "demo_url"}} {
-			if s(d[kv[1]]) != "" {
-				fmt.Printf("%s%s%s  %s\n", cyan, kv[0], rst, linkify(s(d[kv[1]])))
-			}
-		}
-		if m, ok := d["metrics"].(map[string]interface{}); ok && len(m) > 0 {
-			fmt.Printf("%sMeasured results%s\n", cyan, rst)
-			for k, v := range m {
-				fmt.Printf("  %s: %s\n", k, s(v))
-			}
-		}
+		// Marker: frontend mengganti blok ini dengan canvas 2 bagian
+		// (gambar screenshot kiri + detail teks kanan).
+		fmt.Printf("\x1b]1337;Portfolio=project-start:%s\x07", a[1])
+		printProjectDetail(d)
+		fmt.Print("\x1b]1337;Portfolio=project-end\x07")
 		return
 	}
-	if len(a) > 1 || (len(a) == 1 && a[0] != "list" && a[0] != "show") {
+	if len(a) > 1 || (len(a) == 1 && a[0] != "list") {
 		errOut("usage: projects [show <id>]")
 		return
 	}
-	data, err := httpGet("/projects?page=1")
+	data, err := httpGet("/projects?page=1&per_page=50")
 	if err != nil {
 		errOut("Backend tidak terjangkau.")
 		return
@@ -350,16 +343,19 @@ func hProjects(a []string) {
 		note("Belum ada data.")
 		return
 	}
-	for _, r := range rows {
+	// Detail lengkap semua proyek; tiap proyek dibungkus marker sehingga
+	// frontend merender satu canvas 2 bagian per proyek (screenshot kiri,
+	// detail kanan). Klien teks murni melihat teks detailnya saja.
+	for i, r := range rows {
 		m, _ := r.(map[string]interface{})
-		summ := s(m["summary"])
-		if len(summ) > 64 {
-			summ = strings.TrimRight(summ[:61], " ") + "..."
+		if i > 0 {
+			fmt.Println()
 		}
-		fmt.Printf("%s%3.0f%s  %s%s%s\n", green, m["id"], rst, bold, s(m["title"]), rst)
-		fmt.Println("     " + summ)
+		fmt.Printf("\x1b]1337;Portfolio=project-start:%s\x07", s(m["id"]))
+		printProjectDetail(m)
+		fmt.Print("\x1b]1337;Portfolio=project-end\x07")
 	}
-	note("Detail: projects show <id>")
+	note("Detail spesifik: projects show <id>")
 }
 
 func hSimpleList(kind string, title string, key string) {
@@ -529,7 +525,8 @@ func hShow(a []string) {
 	hSocials(nil)
 }
 
-func hSocials(a []string) {	data, err := httpGet("/profile")
+func hSocials(a []string) {
+	data, err := httpGet("/profile")
 	if err != nil {
 		errOut("Backend tidak terjangkau.")
 		return

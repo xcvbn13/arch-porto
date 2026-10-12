@@ -80,6 +80,21 @@ class PortfolioReadEndpointsTest extends TestCase
             ->assertJsonPath('meta.total', 1);
     }
 
+    public function test_projects_index_ordered_by_sort_order_ascending_regardless_of_featured(): void
+    {
+        Project::query()->create(['title' => 'Alpha', 'summary' => 'a', 'description' => 'a', 'sort_order' => 9001]);
+        Project::query()->create(['title' => 'Beta', 'summary' => 'b', 'description' => 'b', 'sort_order' => 9002]);
+        Project::query()->create([
+            'title' => 'Gamma', 'summary' => 'c', 'description' => 'c',
+            'sort_order' => 9003, 'featured' => true,
+        ]);
+
+        $titles = $this->getJson('/api/v1/projects')->assertOk()->json('data.*.title');
+
+        // Ascending by sort_order — proyek `featured` TIDAK dipin ke depan.
+        $this->assertSame(['Alpha', 'Beta', 'Gamma'], array_slice($titles, -3));
+    }
+
     public function test_projects_show_returns_detail(): void
     {
         $this->seed();

@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\EducationController;
 use App\Http\Controllers\Api\ExperienceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\ProjectsLayoutController;
 use App\Http\Controllers\Api\PublicationController;
 use App\Http\Controllers\Api\PtySessionController;
 use App\Http\Controllers\Api\TerminalStyleController;
@@ -59,6 +60,7 @@ Route::prefix('admin')->middleware(['admin', EncryptCookies::class, StartSession
     Route::delete('/fetch/{id}', [FetchEntryController::class, 'destroy'])->whereNumber('id');
     Route::put('/fetch-layout', [FetchEntryController::class, 'updateLayout']);
     Route::put('/about-layout', [FetchEntryController::class, 'updateAboutLayout']);
+    Route::put('/projects-layout', [FetchEntryController::class, 'updateProjectsLayout']);
 
     Route::put('/terminal-style', [AdminTerminalStyleController::class, 'update']);
 
@@ -99,6 +101,9 @@ Route::middleware('throttle:api')->group(function () {
 
     // Style terminal (tema xterm + prompt) — data publik.
     Route::get('/terminal-style', [TerminalStyleController::class, 'show']);
+
+    // Style gambar detail project — data publik.
+    Route::get('/projects-layout', [ProjectsLayoutController::class, 'show']);
 
     // Tiket sesi PTY (shell Arch read-only) — bridge memverifikasi via internal.
     Route::post('/pty/sessions', [PtySessionController::class, 'store'])

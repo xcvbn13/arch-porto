@@ -17,7 +17,6 @@ class ProjectController extends Controller
 
         return ProjectResource::collection(
             Project::query()
-                ->orderByDesc('featured')
                 ->orderBy('sort_order')
                 ->orderByDesc('id')
                 ->paginate($perPage),

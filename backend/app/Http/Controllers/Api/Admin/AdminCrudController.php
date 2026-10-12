@@ -102,9 +102,16 @@ class AdminCrudController extends Controller
     public function index(string $entity): JsonResponse
     {
         $model = self::ENTITIES[$entity]['model'];
+        $query = $model::query();
+
+        // Entitas ber-`sort_order` tampil mengikuti urutan publiknya
+        // (ascending); lainnya terbaru dulu.
+        $query = in_array('sort_order', (new $model)->getFillable(), true)
+            ? $query->orderBy('sort_order')->orderByDesc('id')
+            : $query->orderByDesc('id');
 
         return response()->json([
-            'data' => $model::query()->orderByDesc('id')->get(),
+            'data' => $query->get(),
         ]);
     }
 

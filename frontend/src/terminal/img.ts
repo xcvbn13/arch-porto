@@ -19,6 +19,42 @@ export const WELCOME_MARKER = "\x1b]1337;Portfolio=welcome\x07";
 export const ABOUT_START = "\x1b]1337;Portfolio=about-start\x07";
 export const ABOUT_END = "\x1b]1337;Portfolio=about-end\x07";
 
+/** Penanda blok `projects show <id>`: frontend mengganti blok dengan canvas
+ * 2 bagian (gambar screenshot kiri + detail teks kanan). */
+export const PROJECT_START_PREFIX = "\x1b]1337;Portfolio=project-start:";
+export const PROJECT_END = "\x1b]1337;Portfolio=project-end\x07";
+
+/** Band link di atas canvas: URL yang digambar DI DALAM gambar dipetakan ke
+ * koordinat buffer (1-based, termasuk scrollback) agar bisa diklik. */
+export interface CanvasLinkBand {
+  uri: string;
+  fromY: number;
+  toY: number;
+  x1: number;
+  x2: number;
+}
+
+/** Peta satu baris teks di dalam canvas (posisi px pada raster gambar) ke
+ * baris/kolom buffer terminal. `topRow` = baris buffer 1-based paling atas
+ * gambar, `rows` = tinggi gambar dalam baris sel. */
+export function canvasLinkBand(
+  uri: string,
+  topRow: number,
+  rows: number,
+  yPx: number,
+  xPx: number,
+  wPx: number,
+  cellW: number,
+  cellH: number,
+  cols: number,
+): CanvasLinkBand {
+  const rowOff = Math.min(Math.max(0, Math.floor(yPx / cellH)), Math.max(0, rows - 1));
+  const y = topRow + rowOff;
+  const x1 = Math.min(Math.max(1, Math.floor(xPx / cellW) + 1), cols);
+  const x2 = Math.min(Math.max(x1, Math.ceil((xPx + wPx) / cellW)), cols);
+  return { uri, fromY: y, toY: y, x1, x2 };
+}
+
 /** Pola clear-screen readline (Ctrl+L) — ikut memicu welcome. */
 export const CLEAR_SCREEN_RE = /\x1b\[H\x1b\[2J|\x1b\[2J\x1b\[H/;
 
@@ -32,6 +68,17 @@ export function splitWelcomeMarker(
     post: chunk.slice(i + WELCOME_MARKER.length),
     welcome: true,
   };
+}
+
+/** Bila akhir `t` adalah awalan (terpotong) salah satu penanda, kembalikan
+ *  potongan itu agar ditahan sampai chunk berikutnya (penanda OSC yang
+ *  terbelah batas frame tidak boleh ditulis mentah ke terminal). */
+export function holdTail(t: string, markers: string[]): string {
+  for (let n = Math.min(48, t.length); n >= 2; n--) {
+    const tail = t.slice(t.length - n);
+    if (markers.some((m) => m.startsWith(tail))) return tail;
+  }
+  return "";
 }
 
 /** Wrap teks ke lebar piksel maksimum (diukur presisi via canvas).
