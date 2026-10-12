@@ -108,6 +108,23 @@ class AdminCrudTest extends TestCase
         $this->deleteJson("/api/v1/admin/projects/{$project->id}")->assertOk();
     }
 
+    public function test_admin_projects_index_ordered_by_sort_order(): void
+    {
+        $this->postJson('/api/v1/admin/projects', [
+            'title' => 'Zeta', 'summary' => 'z', 'description' => 'z', 'sort_order' => 50,
+        ])->assertCreated();
+        $this->postJson('/api/v1/admin/projects', [
+            'title' => 'Yotta', 'summary' => 'y', 'description' => 'y', 'sort_order' => 10,
+        ])->assertCreated();
+
+        $titles = $this->getJson('/api/v1/admin/projects')->assertOk()->json('data.*.title');
+        $yi = array_search('Yotta', $titles, true);
+        $zi = array_search('Zeta', $titles, true);
+        $this->assertNotFalse($yi);
+        $this->assertNotFalse($zi);
+        $this->assertTrue($yi < $zi, 'Admin list harus ascending by sort_order.');
+    }
+
     public function test_projects_rejects_invalid_url(): void
     {
         $this->postJson('/api/v1/admin/projects', [
@@ -190,6 +207,95 @@ class AdminCrudTest extends TestCase
         ])->assertOk();
 
         $this->getJson('/api/v1/profile')->assertJsonPath('data.name', 'Imam Baru');
+    }
+
+    public function test_public_profile_includes_about_layout_defaults(): void
+    {
+        $this->getJson('/api/v1/profile')
+            ->assertOk()
+            ->assertJsonPath('data.about_layout.logo_width', 180)
+            ->assertJsonPath('data.about_layout.gap', 14)
+            ->assertJsonPath('data.about_layout.text_width', 420);
+    }
+
+    public function test_admin_can_update_about_layout(): void
+    {
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 520,
+        ])->assertOk();
+
+        $this->getJson('/api/v1/profile')
+            ->assertJsonPath('data.about_layout.logo_width', 220)
+            ->assertJsonPath('data.about_layout.gap', 30)
+            ->assertJsonPath('data.about_layout.text_width', 520);
+    }
+
+    public function test_about_layout_validation(): void
+    {
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 10, // di bawah 40
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 520,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['logo_width']);
+
+        // Batas atas text_width untuk segmen Profile = 1000
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 1200,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['text_width']);
+
+        $this->putJson('/api/v1/admin/about-layout', [
+            'logo_width' => 220,
+            'logo_height' => 220,
+            'gap' => 30,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 1000,
+        ])->assertOk();
+    }
+
+    public function test_projects_layout_defaults_roundtrip_and_validation(): void
+    {
+        $this->getJson('/api/v1/projects-layout')
+            ->assertOk()
+            ->assertJsonPath('data.logo_width', 180)
+            ->assertJsonPath('data.shot_gap', 8);
+
+        $this->putJson('/api/v1/admin/projects-layout', [
+            'logo_width' => 240,
+            'logo_height' => 160,
+            'gap' => 20,
+            'shot_gap' => 12,
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 500,
+        ])->assertOk();
+
+        $this->getJson('/api/v1/projects-layout')
+            ->assertJsonPath('data.logo_width', 240)
+            ->assertJsonPath('data.shot_gap', 12);
+
+        $this->putJson('/api/v1/admin/projects-layout', [
+            'logo_width' => 240,
+            'logo_height' => 160,
+            'gap' => 20,
+            'shot_gap' => 99, // di atas 48
+            'font_size' => 14,
+            'line_height' => 19,
+            'text_width' => 500,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['shot_gap']);
     }
 
     public function test_project_screenshots_upload_serve_delete(): void

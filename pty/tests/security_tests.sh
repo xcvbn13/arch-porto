@@ -56,7 +56,7 @@ const ws = new WebSocket('ws://127.0.0.1:3000/pty?ticket=$TICKET');
 let out = '';
 ws.on('open', () => ws.send('echo PTY_OK; echo x > /home/visitor/f; whoami; command -v sh || echo NO_SH; command -v python || echo NO_PYTHON; command -v curl || echo NO_CURL; /usr/bin/python --version 2>&1 || echo NO_ABS_PYTHON; /usr/bin/node -v 2>&1 || echo NO_ABS_NODE; command -p python --version 2>&1 || echo NO_CMDP_PYTHON; command -p sh -c echo CMDPSH 2>&1 || echo NO_CMDP_SH; help; about; show all; projects; projects show ${SHOW_ID}; resume 2>&1 || echo NO_RESUME; clear; exit\r'));
 ws.on('message', d => { out += d.toString(); });
-ws.on('close', () => { console.log(out); process.exit(0); });
+ws.on('close', () => { require('fs').writeSync(1, out); process.exit(0); });
 setTimeout(() => process.exit(1), 12000);
 " 2>&1)
   echo "$RESULT" | grep -q "PTY_OK" && ok "bash PTY merespons" || bad "bash PTY merespons — got: $(echo "$RESULT" | head -3)"
@@ -78,7 +78,12 @@ setTimeout(() => process.exit(1), 12000);
   echo "$RESULT" | grep -q "Fullstack Developer" && ok "command 'about' menjangkau API backend" || bad "command 'about' menjangkau API backend"
   RESULT_CLEAN=$(printf '%s' "$RESULT" | tr -d '\r' | sed $'s/\x1b\[[0-9;]*m//g')
   echo "$RESULT_CLEAN" | grep -q "backend:" && ok "command 'skills' menampilkan data nyata" || bad "command 'skills' menampilkan data nyata"
-  echo "$RESULT_CLEAN" | grep -q "Detail: projects show" && ok "command 'projects' menampilkan data nyata" || bad "command 'projects' menampilkan data nyata"
+  echo "$RESULT_CLEAN" | grep -q "Detail spesifik: projects show" && ok "command 'projects' menampilkan data nyata" || bad "command 'projects' menampilkan data nyata"
+  STARTS=$(echo "$RESULT_CLEAN" | grep -o "Portfolio=project-start:" | wc -l | tr -d ' ')
+  [ "$STARTS" -ge 2 ] && ok "marker canvas per proyek (daftar+show) terkirim" || bad "marker canvas per proyek terkirim (dapat $STARTS)"
+  if [ -n "$SHOW_ID" ]; then
+    echo "$RESULT_CLEAN" | grep -q "#${SHOW_ID} " && ok "projects: header memuat ID (#${SHOW_ID})" || bad "projects: header memuat ID"
+  fi
   if [ -n "$SHOW_ID" ]; then
     echo "$RESULT_CLEAN" | grep -q " ABOUT " && ok "show all: bagian ABOUT paling atas" || bad "show all: bagian ABOUT paling atas"
   echo "$RESULT_CLEAN" | grep -q " SKILLS " && ok "show all: menampilkan bagian SKILLS" || bad "show all: menampilkan bagian SKILLS"

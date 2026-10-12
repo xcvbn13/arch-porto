@@ -20,6 +20,10 @@ class ProfileResource extends JsonResource
             'resume_url' => $this->resume_url,
             'website_url' => $this->website_url,
             'avatar_url' => $this->avatar_url,
+            'about_layout' => array_merge(
+                \App\Http\Controllers\Api\ProfileController::ABOUT_LAYOUT_DEFAULTS,
+                is_array($this->about_layout) ? $this->about_layout : [],
+            ),
         ];
     }
 }

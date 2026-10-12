@@ -267,6 +267,15 @@ const PROFILE_FIELDS: { key: string; label: string; type: Field["type"] }[] = [
   { key: "website_url", label: "Website URL", type: "text" },
 ];
 
+interface AboutLayout {
+  logo_width: number;
+  logo_height: number;
+  gap: number;
+  font_size: number;
+  line_height: number;
+  text_width: number;
+}
+
 interface ProfileData {
   name: string;
   role: string;
@@ -278,12 +287,15 @@ interface ProfileData {
   resume_url: string | null;
   website_url: string | null;
   avatar_url: string | null;
+  about_layout?: AboutLayout | null;
 }
 
 function ProfileForm() {
   const [data] = useApi<ProfileData>(() => api.get("/profile"));
   const [form, setForm] = useState<Record<string, string>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [aboutLayout, setAboutLayout] = useState<AboutLayout | null>(null);
+  const [layoutMsg, setLayoutMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -293,6 +305,7 @@ function ProfileForm() {
       for (const f of PROFILE_FIELDS) init[f.key] = String((data as never)[f.key] ?? "");
       setForm(init);
       setAvatarUrl(data.avatar_url);
+      setAboutLayout(data.about_layout ?? null);
     }
   }, [data]);
 
@@ -313,6 +326,53 @@ function ProfileForm() {
     <div className="max-w-2xl">
       <h1 className="mb-3 text-lg text-[--term-green]">Profile</h1>
       <AvatarUploader url={avatarUrl} onChanged={setAvatarUrl} />
+      {aboutLayout && (
+        <div className="mb-3 rounded border border-[#1f2733] bg-[#0e1218] p-2">
+          <p className="mb-2 text-sm text-[--term-dim]">
+            Style foto & teks `about` (canvas foto kiri + teks kanan):
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            {(
+              [
+                ["logo_width", "Lebar foto (40–480)"],
+                ["logo_height", "Tinggi foto (40–480)"],
+                ["gap", "Jarak ke teks (0–96)"],
+                ["text_width", "Lebar teks (160–1000)"],
+                ["font_size", "Font teks (9–28)"],
+                ["line_height", "Jarak baris (10–48)"],
+              ] as [keyof AboutLayout, string][]
+            ).map(([key, hint]) => (
+              <label key={key} className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={aboutLayout[key]}
+                  onChange={(e) =>
+                    setAboutLayout({ ...aboutLayout, [key]: Number(e.target.value) || 0 })
+                  }
+                  className="field-input w-20 font-mono text-xs"
+                  title={hint}
+                />
+                <span className="text-xs text-[--term-dim]">{hint.split(" (")[0]}</span>
+              </label>
+            ))}
+            <button
+              onClick={async () => {
+                setLayoutMsg("");
+                try {
+                  await api.put("/admin/about-layout", aboutLayout);
+                  setLayoutMsg("✓ Style about tersimpan.");
+                } catch (e) {
+                  setLayoutMsg(`✗ ${errorText(e)}`);
+                }
+              }}
+              className="btn-primary"
+            >
+              Simpan Style About
+            </button>
+            <span className="text-xs text-[--term-dim]">{layoutMsg}</span>
+          </div>
+        </div>
+      )}
       {form.name === undefined ? (
         <p className="text-[--term-dim]">memuat…</p>
       ) : (
@@ -518,6 +578,7 @@ function EntityEditor({ entity }: { entity: keyof typeof ENTITIES }) {
   return (
     <div className="max-w-3xl">
       <h1 className="mb-3 text-lg text-[--term-green]">{cfg.label}</h1>
+      {entity === "projects" && <ProjectsLayoutBlock />}
       <div className="mb-3 flex items-center gap-3">
         <button onClick={() => setEditing("new")} className="btn-primary">
           + Baru
@@ -1188,6 +1249,78 @@ function PasswordForm() {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
+
+interface ProjectsLayout {
+  logo_width: number;
+  logo_height: number;
+  gap: number;
+  shot_gap: number;
+  font_size: number;
+  line_height: number;
+  text_width: number;
+}
+
+/** Style gambar detail project (canvas screenshot kiri + teks kanan). */
+function ProjectsLayoutBlock() {
+  const [layout, setLayout] = useState<ProjectsLayout | null>(null);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    api
+      .get<ProjectsLayout>("/projects-layout")
+      .then(setLayout)
+      .catch(() => {});
+  }, []);
+
+  if (!layout) return null;
+
+  const fields: [keyof ProjectsLayout, string][] = [
+    ["logo_width", "Lebar gambar (40–480)"],
+    ["logo_height", "Tinggi gambar (40–480)"],
+    ["gap", "Jarak ke teks (0–96)"],
+    ["shot_gap", "Jarak antar screenshot (0–48)"],
+    ["font_size", "Font teks (9–28)"],
+    ["line_height", "Jarak baris (10–48)"],
+    ["text_width", "Lebar teks (160–1000)"],
+  ];
+
+  return (
+    <div className="mb-3 rounded border border-[#1f2733] bg-[#0e1218] p-2">
+      <p className="mb-2 text-sm text-[--term-dim]">
+        Style gambar detail project (canvas screenshot kiri + detail kanan):
+      </p>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        {fields.map(([key, hint]) => (
+          <label key={key} className="flex items-center gap-1">
+            <input
+              type="number"
+              value={layout[key]}
+              onChange={(e) => setLayout({ ...layout, [key]: Number(e.target.value) || 0 })}
+              className="field-input w-20 font-mono text-xs"
+              title={hint}
+            />
+            <span className="text-xs text-[--term-dim]">{hint.split(" (")[0]}</span>
+          </label>
+        ))}
+        <button
+          onClick={async () => {
+            setMsg("");
+            try {
+              await api.put("/admin/projects-layout", layout);
+              setMsg("✓ Style project tersimpan.");
+            } catch (e) {
+              setMsg(`✗ ${errorText(e)}`);
+            }
+          }}
+          className="btn-primary"
+        >
+          Simpan Style Project
+        </button>
+        <span className="text-xs text-[--term-dim]">{msg}</span>
+      </div>
+    </div>
+  );
+}
 
 /** Upload/hapus screenshot proyek (multipart). */
 function ScreenshotsUploader({

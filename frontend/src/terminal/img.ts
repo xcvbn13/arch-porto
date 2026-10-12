@@ -13,6 +13,48 @@ export function iipImage(b64: string, widthPx: number, size: number): string {
  */
 export const WELCOME_MARKER = "\x1b]1337;Portfolio=welcome\x07";
 
+/** Penanda blok `about` (dispatcher Go): frontend mengganti blok teks di
+ * antaranya dengan satu canvas foto-kiri + teks-kanan. Klien teks murni
+ * melihat teks biasa (marker OSC tidak dirender). */
+export const ABOUT_START = "\x1b]1337;Portfolio=about-start\x07";
+export const ABOUT_END = "\x1b]1337;Portfolio=about-end\x07";
+
+/** Penanda blok `projects show <id>`: frontend mengganti blok dengan canvas
+ * 2 bagian (gambar screenshot kiri + detail teks kanan). */
+export const PROJECT_START_PREFIX = "\x1b]1337;Portfolio=project-start:";
+export const PROJECT_END = "\x1b]1337;Portfolio=project-end\x07";
+
+/** Band link di atas canvas: URL yang digambar DI DALAM gambar dipetakan ke
+ * koordinat buffer (1-based, termasuk scrollback) agar bisa diklik. */
+export interface CanvasLinkBand {
+  uri: string;
+  fromY: number;
+  toY: number;
+  x1: number;
+  x2: number;
+}
+
+/** Peta satu baris teks di dalam canvas (posisi px pada raster gambar) ke
+ * baris/kolom buffer terminal. `topRow` = baris buffer 1-based paling atas
+ * gambar, `rows` = tinggi gambar dalam baris sel. */
+export function canvasLinkBand(
+  uri: string,
+  topRow: number,
+  rows: number,
+  yPx: number,
+  xPx: number,
+  wPx: number,
+  cellW: number,
+  cellH: number,
+  cols: number,
+): CanvasLinkBand {
+  const rowOff = Math.min(Math.max(0, Math.floor(yPx / cellH)), Math.max(0, rows - 1));
+  const y = topRow + rowOff;
+  const x1 = Math.min(Math.max(1, Math.floor(xPx / cellW) + 1), cols);
+  const x2 = Math.min(Math.max(x1, Math.ceil((xPx + wPx) / cellW)), cols);
+  return { uri, fromY: y, toY: y, x1, x2 };
+}
+
 /** Pola clear-screen readline (Ctrl+L) — ikut memicu welcome. */
 export const CLEAR_SCREEN_RE = /\x1b\[H\x1b\[2J|\x1b\[2J\x1b\[H/;
 
@@ -28,7 +70,20 @@ export function splitWelcomeMarker(
   };
 }
 
-/** Wrap teks ke lebar piksel maksimum (diukur presisi via canvas). */
+/** Bila akhir `t` adalah awalan (terpotong) salah satu penanda, kembalikan
+ *  potongan itu agar ditahan sampai chunk berikutnya (penanda OSC yang
+ *  terbelah batas frame tidak boleh ditulis mentah ke terminal). */
+export function holdTail(t: string, markers: string[]): string {
+  for (let n = Math.min(48, t.length); n >= 2; n--) {
+    const tail = t.slice(t.length - n);
+    if (markers.some((m) => m.startsWith(tail))) return tail;
+  }
+  return "";
+}
+
+/** Wrap teks ke lebar piksel maksimum (diukur presisi via canvas).
+ *  Word-aware: memotong di spasi; kata yang lebih panjang dari kolom
+ *  di-hard-break sebagai fallback. */
 export function wrapTextPx(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -36,12 +91,13 @@ export function wrapTextPx(
 ): string[] {
   const out: string[] = [];
   for (const line of text.split("\n")) {
-    let rest = line;
+    let rest = line.trimEnd();
     while (rest.length > 0) {
       if (ctx.measureText(rest).width <= maxW) {
         out.push(rest);
         break;
       }
+      // Binary search potongan terpanjang yang muat
       let lo = 1;
       let hi = rest.length;
       let cut = 1;
@@ -54,8 +110,17 @@ export function wrapTextPx(
           hi = mid - 1;
         }
       }
-      out.push(rest.slice(0, cut));
-      rest = rest.slice(cut);
+      // Word-aware: bila sisi kanan potongan masih di tengah kata,
+      // mundurkan cut ke spasi terakhir. Hard-break hanya jika kata
+      // tunggal memang lebih panjang dari kolom.
+      let breakAt = cut;
+      if (cut < rest.length && rest[cut] !== " ") {
+        const prefix = rest.slice(0, cut);
+        const lastSpace = prefix.lastIndexOf(" ");
+        if (lastSpace > 0) breakAt = lastSpace;
+      }
+      out.push(rest.slice(0, breakAt).trimEnd());
+      rest = rest.slice(breakAt).trimStart();
     }
   }
   return out.length ? out : [""];

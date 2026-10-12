@@ -19,7 +19,7 @@ const VERIFY_URL =
   process.env.PTY_VERIFY_URL || "http://backend:8080/api/v1/pty/verify";
 const MAX_SESSIONS = parseInt(process.env.PTY_MAX_SESSIONS || "20", 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.PTY_IDLE_TIMEOUT || "600000", 10);
-const OUTPUT_LIMIT = parseInt(process.env.PTY_OUTPUT_LIMIT || "524288", 10);
+const OUTPUT_LIMIT = parseInt(process.env.PTY_OUTPUT_LIMIT || "2097152", 10);
 
 let active = 0;
 
@@ -47,12 +47,13 @@ function spawnShell(cols = 80, rows = 24, style = null) {
   // visitor (uid 1000). Tanpa --norc: /home/visitor/.bashrc (read-only)
   // menonaktifkan builtin 'help' dan memasang PS1 (jika env PS1 kosong).
   // Prompt powerline: segmen user@host berlatar accent + panah + path.
-  let ps1 = "\\[\\e[48;2;0;215;135m\\e[38;2;0;0;0m\\] visitor@imam-portfolio \\[\\e[49m\\e[38;2;0;215;135m\\]❯\\[\\e[0m\\] \\[\\e[38;2;212;217;224m\\]\\w\\[\\e[0m\\] \\$ ";
+  // Baris kosong di depan agar output command tidak rapat dengan prompt.
+  let ps1 = "\\n\\[\\e[48;2;0;215;135m\\e[38;2;0;0;0m\\] visitor@imam-portfolio \\[\\e[49m\\e[38;2;0;215;135m\\]❯\\[\\e[0m\\] \\[\\e[38;2;212;217;224m\\]\\w\\[\\e[0m\\] \\$ ";
   const acc = style ? hexToRgb(style.accent) : null;
   const fg = style ? hexToRgb(style.foreground) : null;
   if (acc && fg) {
     ps1 =
-      `\\[\\e[48;2;${acc[0]};${acc[1]};${acc[2]}m\\e[38;2;0;0;0m\\] visitor@imam-portfolio ` +
+      `\\n\\[\\e[48;2;${acc[0]};${acc[1]};${acc[2]}m\\e[38;2;0;0;0m\\] visitor@imam-portfolio ` +
       `\\[\\e[49m\\e[38;2;${acc[0]};${acc[1]};${acc[2]}m\\]❯\\[\\e[0m\\] ` +
       `\\[\\e[38;2;${fg[0]};${fg[1]};${fg[2]}m\\]\\w\\[\\e[0m\\] \\$ `;
   }

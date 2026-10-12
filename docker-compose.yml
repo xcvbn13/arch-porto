@@ -84,7 +84,7 @@ services:
       PTY_VERIFY_URL: http://backend:8080/api/v1/pty/verify
       PTY_MAX_SESSIONS: ${PTY_MAX_SESSIONS:-100}
       PTY_IDLE_TIMEOUT: ${PTY_IDLE_TIMEOUT:-300000}
-      PTY_OUTPUT_LIMIT: ${PTY_OUTPUT_LIMIT:-524288}
+      PTY_OUTPUT_LIMIT: ${PTY_OUTPUT_LIMIT:-2097152}
     networks: [ptyedge, sandboxnet]
     restart: unless-stopped
     read_only: true
